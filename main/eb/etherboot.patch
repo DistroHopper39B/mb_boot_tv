@@ -1,0 +1,195 @@
+--- in.h	2007-02-24 14:44:59.000000000 +0000
++++ in.h	2007-04-19 19:15:13.000000000 +0100
+@@ -1,7 +1,7 @@
+ #ifndef	_IN_H
+ #define	_IN_H
+ 
+-#include <if_ether.h>
++#include "if_ether.h"
+ #define IP		ETH_P_IP
+ #define ARP		ETH_P_ARP
+ #define	RARP		ETH_P_RARP
+--- isa.h	2007-02-24 14:44:59.000000000 +0000
++++ isa.h	2007-04-19 18:16:05.000000000 +0100
+@@ -17,11 +17,15 @@
+ 	unsigned short *ioaddrs;
+ };
+ 
++#if 0
+ #ifndef __HYPERSTONE__
+ #define __isa_driver	__attribute__ ((used,__section__(".drivers.isa")))
+ #else 
+ #define __isa_driver	__attribute__ ((used,__section__(".drivisa")))
+ #endif
++#else
++#define __isa_driver 
++#endif
+ 
+ extern const struct isa_driver isa_drivers[];
+ extern const struct isa_driver isa_drivers_end[];
+--- pci.h	2007-02-24 14:44:59.000000000 +0000
++++ pci.h	2007-04-19 18:48:06.000000000 +0100
+@@ -351,10 +351,14 @@
+ 	unsigned short class;
+ };
+ 
++#if 0
+ #define __pci_driver	__attribute__ ((used,__section__(".drivers.pci")))
++#else
++#define __pci_driver
++#endif
+ /* Defined by the linker... */
+ extern const struct pci_driver pci_drivers[];
+-extern const struct pci_driver pci_drivers_end[];
++extern const struct pci_driver *pci_drivers_end;
+ 
+ #define PCI_ROM(VENDOR_ID, DEVICE_ID, IMAGE, DESCRIPTION) \
+ 	{ VENDOR_ID, DEVICE_ID, IMAGE, }
+--- misc.c	2007-02-24 14:44:59.000000000 +0000
++++ misc.c	2007-04-19 19:58:05.000000000 +0100
+@@ -98,13 +98,14 @@
+ 	/* If an interruption has occured restart etherboot */
+ 	if (iskey() && (ch = getchar(), (ch == K_ESC) || (ch == K_EOF) || (ch == K_INTR))) {
+ 		int state = (ch != K_INTR)? -1 : -3;
+-		longjmp(restart_etherboot, state);
++		flail();
+ 	}
+ }
+ 
+ /**************************************************************************
+ SLEEP
+ **************************************************************************/
++#if 0
+ void sleep(int secs)
+ {
+ 	unsigned long tmo;
+@@ -113,6 +114,7 @@
+ 		poll_interruptions();
+ 	}
+ }
++#endif
+ 
+ /**************************************************************************
+ INTERRUPTIBLE SLEEP
+@@ -254,6 +256,7 @@
+ 
+ int last_putchar; // From filo
+ 
++#if 0
+ void
+ putchar(int c)
+ {
+@@ -275,12 +278,15 @@
+ 	serial_putc(c);
+ #endif
+ }
++#endif
+ 
+ /**************************************************************************
+ GETCHAR - Read the next character from input device WITHOUT ECHO
+ **************************************************************************/
++#if 0
+ int getchar(void)
+ {
++
+ 	int c = 256;
+ 
+ 	do {
+@@ -328,6 +334,7 @@
+ #endif
+ 	return 0;
+ }
++#endif
+ 
+ #if DEBUG_UTILS
+ 
+--- nic.c	2007-02-24 14:44:59.000000000 +0000
++++ nic.c	2007-04-19 19:44:19.000000000 +0100
+@@ -24,7 +24,7 @@
+ struct igmptable_t	igmptable[MAX_IGMP];
+ #endif
+ /* Put rom_info in .nocompress section so romprefix.S can write to it */
+-struct rom_info	rom __attribute__ ((section (".text16.nocompress"))) = {0,0};
++struct rom_info	rom  = {0,0};
+ static unsigned long	netmask;
+ /* Used by nfs.c */
+ char *hostname = "";
+@@ -378,7 +378,7 @@
+ #endif
+ 	if (!server_found) {
+ 		printf("No Server found\n");
+-		longjmp(restart_etherboot, -1);
++		flail();
+ 	}
+ 	return 0;
+ }
+@@ -464,7 +464,7 @@
+ 		printf("No filename\n");
+ 	}
+ 	interruptible_sleep(2);		/* lay off the server for a while */
+-	longjmp(restart_etherboot, -1);
++	flail();
+ }
+ 
+ 
+--- pci.c	2007-02-24 14:44:59.000000000 +0000
++++ pci.c	2007-04-19 18:57:19.000000000 +0100
+@@ -19,9 +19,11 @@
+ {
+ 	const struct pci_driver *skip_driver = last_driver;
+ 	/* Assume there is only one match of the correct type */
++	const struct pci_driver **driver_p;
+ 	const struct pci_driver *driver;
+ 	
+-	for(driver = pci_drivers; driver < pci_drivers_end; driver++) {
++	for(driver_p = pci_drivers_p; driver_p < pci_drivers_p_end; driver_p++) {
++		driver=*driver_p;
+ 		int i;
+ 		if (driver->type != type)
+ 			continue;
+@@ -44,7 +46,8 @@
+ 	if (!class) {
+ 		goto out;
+ 	}
+-	for(driver = pci_drivers; driver < pci_drivers_end; driver++) {
++	for(driver_p = pci_drivers_p; driver_p < pci_drivers_p_end; driver_p++) {
++		driver=*driver_p;
+ 		if (driver->type != type)
+ 			continue;
+ 		if (skip_driver) {
+--- pci_probe.c	2007-02-24 14:44:59.000000000 +0000
++++ pci_probe.c	2007-04-19 19:02:02.000000000 +0100
+@@ -12,8 +12,10 @@
+ 
+ void pci_enumerate(void)
+ {
++	const struct pci_driver **driver_p;
+ 	const struct pci_driver *driver;
+-	for(driver = pci_drivers; driver < pci_drivers_end; driver++) {
++	for(driver_p = pci_drivers_p; driver_p < pci_drivers_p_end; driver_p++) {
++		driver=*driver_p;
+ 		printf("%s ", driver->name);
+ 	}
+ }
+--- rtl8139.c	2007-04-20 00:03:01.000000000 +0100
++++ rtl8139.c	2007-04-19 18:50:33.000000000 +0100
+@@ -541,7 +541,7 @@
+ PCI_ROM(0xffff, 0x8139, "clone-rtl8139", "Cloned 8139"),
+ };
+ 
+-static struct pci_driver rtl8139_driver __pci_driver = {
++struct pci_driver rtl8139_driver __pci_driver = {
+ 	.type     = NIC_DRIVER,
+ 	.name     = "RTL8139",
+ 	.probe    = rtl8139_probe,
+--- ide_disk.c	2007-04-20 00:55:36.000000000 +0100
++++ ide_disk.c	2007-04-20 00:55:58.000000000 +0100
+@@ -823,7 +823,7 @@
+ #endif
+ };
+ 
+-static struct pci_driver ide_driver __pci_driver = {
++struct pci_driver ide_driver = {
+ 	.type      = DISK_DRIVER,
+ 	.name      = "IDE",
+ 	.probe     = ide_pci_probe,
